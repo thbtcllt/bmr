@@ -99,13 +99,13 @@ pmbus_lin11_to_double(uint16_t raw) {
 
   double scale = (exp >= 0) ? (1 << exp) : 1.0 / (1 << (-exp));
 
-  return (double) mant *scale;
+  return (double)(mant * scale);
 }
 
 double
 pmbus_lin16u_to_double(uint16_t raw, int exp5) {
   double scale = (exp5 >= 0) ? (1 << exp5) : 1.0 / (1 << (-exp5));
-  return (double) raw *scale;
+  return (double)(raw * scale);
 }
 
 uint16_t
