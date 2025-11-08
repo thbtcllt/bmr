@@ -21,6 +21,7 @@ bmr --bus /dev/i2c-1 --addr 0x40 mfr-multi-pin get
 bmr --bus /dev/i2c-1 --addr 0x40 mfr-multi-pin set --mode standalone --pg pushpull --pg-enable 1 --sec-rc-pull 0
 bmr --bus /dev/i2c-1 --addr 0x40 fwdata --json --pretty
 bmr --bus /dev/i2c-1 --addr 0x40 restart
+bmr --bus /dev/i2c-1 --addr 0x40 id
 bmr --bus /dev/i2c-1 --addr 0x40 user-data get
 bmr --bus /dev/i2c-1 --addr 0x40 user-data set --ascii "Hello" --store
 ```

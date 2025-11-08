@@ -6,6 +6,7 @@ sources = [
   'decoders.c',
   'mfr_snapshot.c',
   'mfr_multipin.c',
+  'mfr_id.c',
   'util_json.c',
 ]
 

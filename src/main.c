@@ -4,7 +4,9 @@
 #include "decoders.h"
 #include "mfr_snapshot.h"
 #include "mfr_multipin.h"
+#include "mfr_id.h"
 #include "util_json.h"
+
 #include <jansson.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +26,11 @@ usage(const char *p) {
           "  status\n"
           "  snapshot [--cycle 0..19] [--decode]\n"
           "  mfr-multi-pin get|set [--mode MODE] [--pg pushpull|highz] [--pg-enable 0|1] [--sec-rc-pull 0|1]\n"
-          "  fwdata\n" "  restart\n" "  user-data get|set [--hex XX..|--ascii STR] [--store|--restore]\n", p);
+          "  id\n"
+          "  fwdata\n"
+          "  restart\n"
+          "  user-data get|set [--hex XX..|--ascii STR] [--store|--restore]\n"
+          , p);
 }
 
 static void
@@ -390,6 +396,11 @@ main(int argc, char * const *argv) {
 
   if (!strcmp(cmd, "restart")) {
     rc = cmd_restart_do(fd);
+    goto fini;
+  }
+
+  if (!strcmp(cmd, "id")) {
+    rc = cmd_mfr_id(fd, argc - optind, &argv[optind]);
     goto fini;
   }
 
