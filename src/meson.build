@@ -7,6 +7,11 @@ sources = [
   'mfr_snapshot.c',
   'mfr_multipin.c',
   'mfr_id.c',
+  'mfr_fwdata.c',
+  'mfr_restart.c',
+  'mfr_user_data.c',
+  'read_cmd.c',
+  'status_cmd.c',
   'util_json.c',
 ]
 
