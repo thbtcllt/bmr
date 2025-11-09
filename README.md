@@ -34,6 +34,10 @@ bmr --bus /dev/i2c-1 --addr 0x40 operation set --on --margin normal # turn the r
 bmr --bus /dev/i2c-1 --addr 0x40 operation set --margin high # assuming the rail is on, turn the marin high
 bmr --bus /dev/i2c-1 --addr 0x40 operation set --off # turn off, based on onoff config settings
 bmr --bus /dev/i2c-1 --addr 0x40 operation set --raw 0xC0 # same, using raw: on + margin high
+bmr --bus /dev/i2c-1 --addr 0x40 vout get
+bmr --bus /dev/i2c-1 --addr 0x40 vout set --command 1.00
+bmr --bus /dev/i2c-1 --addr 0x40 vout set --set-all 0.90 --margin-pct 5 # command=0.90, mhigh~0.945, mlow~0.855
+bmr --bus /dev/i2c-1 --addr 0x40 vout set --command 1.2 --mhigh 1.26 --mlow 1.14 # explicit
 ```
 
 **Notes:**

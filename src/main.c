@@ -10,6 +10,7 @@
 #include "onoff_cmd.h"
 #include "operation_cmd.h"
 #include "status_cmd.h"
+#include "vout_cmd.h"
 #include "mfr_fwdata.h"
 #include "mfr_restart.h"
 #include "mfr_user_data.h"
@@ -48,6 +49,8 @@ usage(const char *p) {
 "  onoff get|set [--powerup always|controlled] [--source none|operation|pin|both]\n"
 "                [--en-active high|low] [--off soft|immediate] [--raw 0xHH]\n"
 "  operation get|set [--on|--off] [--margin normal|low|high] [--raw 0xHH]\n"
+"  vout get|set [--command V] [--mhigh V] [--mlow V]\n"
+"               [--set-all NOM --margin-pct +/-PCT]\n"
 "\n"
 "Default:\n"
 "  i2c DEV=%s addr=0x%02x\n"
@@ -154,6 +157,11 @@ main(int argc, char *const *argv) {
 
   if (!strcmp(cmd, "operation")) {
     rc = cmd_operation(fd, argc - optind, &argv[optind], opt_pretty);
+    goto fini;
+  }
+
+  if (!strcmp(cmd, "vout")) {
+    rc = cmd_vout(fd, argc - optind, &argv[optind], opt_pretty);
     goto fini;
   }
 
