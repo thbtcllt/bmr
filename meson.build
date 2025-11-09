@@ -12,8 +12,8 @@ fully_static = get_option('fully_static')
 
 cc = meson.get_compiler('c')
 
-jansson_dep = dependency('jansson', required: true)
+jansson_dep = dependency('jansson', required: true, static: true)
 # XXX
-libi2c_dep = cc.find_library('i2c', required: true)
+libi2c_dep = cc.find_library('i2c', required: true, static: true)
 
 subdir('src')
