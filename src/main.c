@@ -25,22 +25,36 @@ static int opt_pretty = 1;
 static void
 usage(const char *p) {
   fprintf(stderr,
-          "Usage: %s --bus DEV --addr 0xHH <command> [args]\n\n"
-          "Commands:\n"
-          "  read [vin|vout|iout|temp1|temp2|duty|freq|all]\n"
-          "  status\n"
-          "  snapshot [--cycle 0..19] [--decode]\n"
-          "  mfr-multi-pin get|set [--mode MODE] [--pg pushpull|highz] [--pg-enable 0|1] [--sec-rc-pull 0|1]\n"
-          "  id\n" "  fwdata\n" "  restart\n" "  user-data get|set [--hex XX..|--ascii STR] [--store|--restore]\n", p);
+
+"Usage: %s --bus DEV --addr 0xHH [-P/--pretty-off] <command> [args]\n"
+"\n"
+"Commands:\n"
+"  read [vin|vout|iout|temp1|temp2|duty|freq|all]\n"
+"  status\n"
+"  snapshot [--cycle 0..19] [--decode]\n"
+"  mfr-multi-pin get|set [--mode MODE] [--pg pushpull|highz] [--pg-enable 0|1] [--sec-rc-pull 0|1]\n"
+"  id\n"
+"  fwdata\n"
+"  restart\n"
+"  user-data get|set [--hex XX..|--ascii STR] [--store|--restore]\n"
+"\n"
+"Default:\n"
+"  i2c DEV=%s addr=0x%02x\n"
+
+, p
+, opt_bus
+, opt_addr
+  );
+
 }
 
 int
 main(int argc, char *const *argv) {
-  static const char* Lopt = "b:a:ph";
+  static const char* Lopt = "b:a:Ph";
   static const struct option L[] = {
       { "bus", required_argument, NULL, 'b' }
     , { "addr", required_argument, NULL, 'a' }
-    , { "pretty", no_argument, NULL, 'p' }
+    , { "pretty-off", no_argument, NULL, 'P' }
     , { "help", no_argument, NULL, 'h' }
     , { }
   };
@@ -54,8 +68,8 @@ main(int argc, char *const *argv) {
       case 'a':
         opt_addr = (int)strtol(optarg, NULL, 0);
         break;
-      case 'p':
-        opt_pretty = 1;
+      case 'P':
+        opt_pretty = 0;
         break;
       case 'h':
       default:
