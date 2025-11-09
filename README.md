@@ -1,47 +1,398 @@
 # bmr — PMBus CLI for Flex BMR685/BMR456 (Linux I2C)
 
-This tool speaks PMBus/SMBus over `/dev/i2c-*` to read sensors, decode vendor
-**snapshots** (0xD7), configure **MFR_MULTI_PIN_CONFIG** (0xF9), dump **MFR_FIRMWARE_DATA**
-(0xFD), trigger **MFR_RESTART** (0xFE), and access **USER_DATA_00** (0xB0). JSON output
-is powered by Jansson.
+This tool speaks PMBus/SMBus over `/dev/i2c-*` to read sensors, configure
+rails, margin voltages, manage timing and on/off behavior, and access
+Flex (former Ericsson) manufacturer features. JSON output is powered by Jansson.
+
+* `FPM-AppNote302-PMBus-Command-Set-RevD.pdf`
+* `FPM-TechSpec-BMR685-RevA_2022-03-09-082051_rhel.pdf`
+* `p010641-.pdf (BMR456)`
 
 ## Build (Meson)
+
 ```bash
-meson setup build -Dfully_static=false
+meson setup build # -Dfully_static=false
 meson compile -C build
 sudo meson install -C build
 ```
 
-## Usage
+## Global CLI layout & options
+
+All commands accept the bus and address; most support JSON output.
+
 ```bash
-bmr --bus /dev/i2c-1 --addr 0x40 read all --json --pretty
-bmr --bus /dev/i2c-1 --addr 0x40 status --json --pretty
-bmr --bus /dev/i2c-1 --addr 0x40 snapshot --cycle 0 --decode --json --pretty
-bmr --bus /dev/i2c-1 --addr 0x40 mfr-multi-pin get
-bmr --bus /dev/i2c-1 --addr 0x40 mfr-multi-pin set --mode standalone --pg pushpull --pg-enable 1 --sec-rc-pull 0
-bmr --bus /dev/i2c-1 --addr 0x40 fwdata --json --pretty
-bmr --bus /dev/i2c-1 --addr 0x40 restart
-bmr --bus /dev/i2c-1 --addr 0x40 id
-bmr --bus /dev/i2c-1 --addr 0x40 user-data get
-bmr --bus /dev/i2c-1 --addr 0x40 user-data set --ascii "Hello" --store
-bmr --bus /dev/i2c-1 --addr 0x40 onoff get
-bmr --bus /dev/i2c-1 --addr 0x40 timing help
-bmr --bus /dev/i2c-1 --addr 0x40 timing get
-bmr --bus /dev/i2c-1 --addr 0x40 timing set --profile sequenced
-bmr --bus /dev/i2c-1 --addr 0x40 timing set --ton-delay 250 --ton-rise 100 --toff-fall 20
-bmr --bus /dev/i2c-1 --addr 0x40 operation get
-bmr --bus /dev/i2c-1 --addr 0x40 operation set --on --margin normal # turn the rail on, margin normal
-bmr --bus /dev/i2c-1 --addr 0x40 operation set --margin high # assuming the rail is on, turn the marin high
-bmr --bus /dev/i2c-1 --addr 0x40 operation set --off # turn off, based on onoff config settings
-bmr --bus /dev/i2c-1 --addr 0x40 operation set --raw 0xC0 # same, using raw: on + margin high
-bmr --bus /dev/i2c-1 --addr 0x40 vout get
-bmr --bus /dev/i2c-1 --addr 0x40 vout set --command 1.00
-bmr --bus /dev/i2c-1 --addr 0x40 vout set --set-all 0.90 --margin-pct 5 # command=0.90, mhigh~0.945, mlow~0.855
-bmr --bus /dev/i2c-1 --addr 0x40 vout set --command 1.2 --mhigh 1.26 --mlow 1.14 # explicit
+bmr --bus /dev/i2c-1 --addr 0x40 <command> [subcommand] [--json] [--pretty]
 ```
 
-**Notes:**
-- Linear conversions follow PMBus (VOUT uses `VOUT_MODE` exponent).
-- After `STORE_*` commands, allow ~5–10 ms NVM latency before re‑access.
-- based on 1/28701-FGC 101 1823 revD February 2013 Ericsson AB BMR456 Technical specification
-- based on 1/28701-BMR685 Rev.A July 2021 Flex BMR685 Technical specification that provides more details
+* `--bus` Linux I2C device path (default: `/dev/i2c-1`).
+* `--addr` 7-bit device address (default: `0x40`).
+* `--json`, `--pretty` enable machine-readable output (handy for scripts/CI).
+
+## read — Telemetry & sensor data
+
+```bash
+bmr ... read all|vin|vout|iout|temp|freq|duty [--json] [--pretty]
+```
+
+### What it does
+
+Reads common PMBus telemetry using standard `READ_*` commands (e.g.,
+`READ_VIN`, `READ_VOUT`, `READ_IOUT`, `READ_TEMPERATURE_x`, `READ_FREQUENCY`,
+`READ_DUTY_CYCLE`). Linear data encoding follows PMBus (LIN-11 or LIN-16u);
+output voltage scaling uses `VOUT_MODE`.
+
+### Key options
+
+* `all` – dump all supported sensors in one JSON block.
+* Specific sensor names – only that measurement.
+* `--json --pretty` – structured output.
+
+### Use case
+
+Bring-up sanity check before enabling loads:
+
+```bash
+bmr --bus /dev/i2c-1 --addr 0x40 read all --json --pretty
+```
+
+Validate VIN is within range, VOUT ≈ expected setpoint, and TEMP stays safe
+while idling.
+
+## status — Faults, warnings, and flags
+
+```bash
+bmr ... status [--json] [--pretty]
+```
+
+### What it does
+
+Collects and decodes PMBus `STATUS_*` registers (`STATUS_WORD`, `STATUS_VOUT`,
+`STATUS_IOUT`, `STATUS_INPUT`, `STATUS_TEMPERATURE`, `STATUS_CML`,
+`STATUS_MFR_SPECIFIC`, etc.) into a single JSON. Helps interpret
+present/latched faults and warnings.
+
+### Use case
+
+Root-cause a rail shutdown during board test:
+
+```bash
+bmr ... status --json --pretty
+```
+
+If `STATUS_INPUT` shows UVLO while `STATUS_VOUT` flags TON_MAX_FAULT, sequence
+or upstream supply is suspect. Cross-check timing (below).
+
+## snapshot — Flex/Ericsson snapshot buffer
+
+```bash
+bmr ... snapshot [--cycle <n>] [--decode] [--json] [--pretty]
+```
+
+### What it does
+
+Reads vendor snapshot (e.g., `MFR_GET_SNAPSHOT`), a manufacturer log capturing
+telemetry and status at event times. `--cycle` selects which snapshot entry to
+read; `--decode` converts linear formats and decodes status bits. Availability
+and depth are device-specific (BMR685 documents the feature).
+
+### Use case
+
+After unexpected PG (Power Good) drop, fetch the last event record:
+
+```bash
+bmr ... snapshot --cycle 0 --decode --json --pretty
+```
+
+Correlate VIN dip + IOUT surge at the fault time to confirm overload rather than
+configuration error.
+
+## mfr-multi-pin — Configure Multi-Pin / Power-Good behavior
+
+```bash
+bmr ... mfr-multi-pin get
+bmr ... mfr-multi-pin set --mode standalone|dls --pg pushpull|highz \
+                          --pg-enable 0|1 --sec-rc-pull 0|1
+```
+
+### What it does
+
+Interfaces with `MFR_MULTI_PIN_CONFIG` (0xF9). Lets you select standalone/DLS
+modes, PG driver type (push-pull vs high-Z/open), enable/disable PG, secondary
+RC pull behavior, etc., as documented for BMR685/BMR456. Exact bitfields are
+device-specific; this command reads/modifies/writes the byte safely.
+
+### Use case
+
+Make PG compatible with downstream logic requiring high-Z (open-drain) signaling:
+
+```bash
+bmr ... mfr-multi-pin set --pg highz --pg-enable 1
+```
+
+Now PG can be wire-ORed across rails without contention.
+
+## fwdata — Manufacturer firmware data dump
+
+```bash
+bmr ... fwdata [--json] [--pretty]
+```
+
+### What it does
+
+Dumps `MFR_FIRMWARE_DATA` (0xFD) as a block string and shows device/firmware
+information that isn’t covered by standard `PMBUS_REVISION`/ID strings. Format
+is vendor-specific; output is provided as text/JSON.
+
+### Use case
+
+Inventory/validation in production:
+
+```bash
+bmr ... fwdata --json
+```
+
+Ensure all units report the expected FW build before enabling STORE to NVM.
+
+## restart — Vendor restart trigger
+
+```bash
+bmr ... restart
+```
+
+### What it does
+
+Triggers a soft restart via `MFR_RESTART` (0xFE). Useful after changing
+configuration that the module applies at startup, or to clear certain latched
+states without power-cycling the board. Behavior is device-specific; consult
+the technical spec.
+
+### Use case
+
+Apply multipin or timing changes that require restart semantics.
+
+```bash
+bmr ... restart
+```
+
+Plan a brief service window (rail drop) if the device restarts output.
+
+## id — Manufacturer identification strings
+
+```bash
+bmr ... id [--json] [--pretty]
+```
+
+### What it does
+
+Reads block strings such as `MFR_ID`, `MFR_MODEL`, `MFR_REVISION`, and standard
+`PMBUS_REVISION`, publishing them as JSON. Strings are in PMBus BLOCK format and
+are trimmed of trailing NUL/CR/LF.
+
+### Use case
+
+Quick field identification, test the i2c/PMBus:
+
+```bash
+bmr ... id --json
+```
+
+Match model and revision to your qualification matrix before running
+margins/timing profiles.
+
+## user-data — Read/write user NVM fields
+
+```bash
+bmr ... user-data get
+bmr ... user-data set --ascii "Hello" [--store]
+```
+
+### What it does
+
+Accesses vendor `USER_DATA_00` (0xB0) area for storing small notes or process
+metadata (e.g., calibration token). With `--store`, the tool persists changes
+via `STORE_USER_ALL` or device-specific store, observing NVM latency. See App
+Note 302 for STORE/RESTORE semantics and timing.
+
+### Use case
+
+Stamp a unit with a calibration tag, manufacturing information:
+
+```bash
+bmr ... user-data set --ascii "Cal=OK@2025-11-09" --store
+```
+
+Wait ~5–10 ms before re-reading to allow NVM write to complete.
+
+## onoff — ON_OFF_CONFIG policy
+
+```bash
+bmr ... onoff get
+bmr ... onoff set --powerup controlled|immediate \
+                  --source pmbus|pin|both \
+                  --en-active low|high \
+                  --off soft|immediate \
+                  [--raw 0xNN]
+```
+
+### What it does
+
+Reads/modifies `ON_OFF_CONFIG` (0x02): control source (PMBus, pin, both),
+enable polarity, soft vs immediate off, and power-up behavior. This determines
+how `OPERATION` interacts with the pin and how the module treats pre-biased
+outputs. App Note 302 defines bit semantics; device docs add notes for pre-bias
+handling.
+
+### Use case
+
+Allow either pin or PMBus to enable the rail, with soft-off for load safety:
+
+```bash
+bmr ... onoff set --powerup controlled --source both --en-active high --off soft
+```
+
+Now `operation set --off` ramps down gracefully per TON/TOFF settings.
+
+## operation — Turn rail on/off and apply margin states
+
+```bash
+bmr ... operation get
+bmr ... operation set [--on|--off] [--margin normal|high|low] [--raw 0xNN]
+```
+
+### What it does
+
+Manipulates `OPERATION` (0x01): on/off state and margin selector (normal, high,
+low). The effect depends on `ON_OFF_CONFIG` policy and whether margins are
+pre-programmed (see `vout`). App Note 302 documents bit meanings.
+
+### Use case
+
+Automated margin test at +5%:
+
+```bash
+bmr ... vout set --set-all 1.00 --margin-pct 5
+bmr ... operation set --on --margin high
+```
+
+Run functional tests while the rail is at +5%, then return to normal.
+
+## timing — TON/TOFF delays, ramp rates, and fault responses
+
+```bash
+bmr ... timing help
+bmr ... timing get
+bmr ... timing set [--profile safe|sequenced|fast|prebias] \
+                   [--ton-delay <ms>] [--ton-rise <ms>] \
+                   [--toff-delay <ms>] [--toff-fall <ms>] \
+                   [--fault-response <composed>|--fault-byte 0xNN] \
+                   [--retries <n>] [--delay-units <u>]
+```
+
+### What it does
+
+Controls standard PMBus timing registers: `TON_DELAY` (0x60), `TON_RISE` (0x61),
+`TOFF_DELAY` (0x64), `TOFF_FALL` (0x65), and device-specific TON_MAX/TOFF fault
+response. Typical ranges are 0…~32.7 s in 1 ms units; actual bounds and accuracy
+are device-specific (BMR685 details ranges/accuracy and sequencing notes; BMR456
+provides analogous timing controls).
+
+* `Profiles` are convenience presets:
+
+  * `safe` – longer rise/fall and delays to minimize inrush.
+  * `sequenced` – stagger multiple rails with `TON_DELAY`.
+  * `fast` – minimal delays for quick bring-up (within device limits).
+  * `prebias` – pair with `onoff` pre-bias-friendly settings to avoid sinking.
+    (You can still override any field explicitly.)
+  * Edit the code and add yours
+
+* `fault-response` can be provided as a literal vendor byte (`--fault-byte`) or
+built from sub-options (`--fault-response` with retries/unit selectors), as
+supported by the device. See the BMR685 tech spec for the exact mapping.
+
+### Use case
+
+Sequence 3 rails with 250 ms spacing and gentle ramps:
+
+```bash
+# Rail A
+bmr ... timing set --profile sequenced --ton-delay 0   --ton-rise 100 --toff-fall 40
+# Rail B
+bmr ... timing set --profile sequenced --ton-delay 250 --ton-rise 100 --toff-fall 40
+# Rail C
+bmr ... timing set --profile sequenced --ton-delay 500 --ton-rise 100 --toff-fall 40
+```
+
+This reduces inrush and ensures downstream logic sees rails in the correct order.
+
+## vout — Nominal voltage and margin setpoints
+
+```bash
+bmr ... vout get
+bmr ... vout set --command <V> [--mhigh <V>] [--mlow <V>] \
+                 [--set-all <V> --margin-pct <pct>]
+```
+
+### What it does
+
+Programs nominal voltage (`VOUT_COMMAND`) and margin setpoints
+(`VOUT_MARGIN_HIGH/LOW`). Values are converted using `VOUT_MODE` (LIN-16u) so
+you can specify volts directly. For safety, prefer `--set-all` with `--margin-pct`
+to keep margins consistent around the new setpoint. PMBus semantics and linear
+conversions are per App Note 302; device voltage ranges and resolution are in
+the tech specs.
+
+### Use case
+
+Set a 0.90 V rail and margins +/-5% in one shot:
+
+```bash
+bmr ... vout set --set-all 0.90 --margin-pct 5
+    # => command=0.90, mhigh~0.945, mlow~0.855
+```
+
+Then use `operation set --margin high|low` during validation.
+
+## Notes & best practices
+
+* **Linear formats**: The tool reads `VOUT_MODE` to scale VOUT and uses
+  LIN-11/LIN-16 for other readings. Always script against `--json` to avoid
+  locale/format surprises.
+
+* **STORE/RESTORE**: When persisting configuration (`STORE_*`), allow ~5–10 ms
+  for NVM writes before re-accessing. Avoid frequent stores to extend NVM life.
+
+* **Pre-bias outputs**: If rails may be pre-biased (e.g., shared loads), choose
+  `onoff` settings and timing that avoid sinking current on start. Device manuals
+  include explicit guidance.
+
+* **PG & system logic**: With `mfr-multi-pin`, set PG to high-Z/open-drain when
+  multiple rails feed a common PG net.
+
+## Examples (quick reference)
+
+```bash
+# Status & sensors
+bmr --bus /dev/i2c-1 --addr 0x40 read all --json --pretty
+bmr --bus /dev/i2c-1 --addr 0x40 status --json --pretty
+
+# ID & firmware
+bmr --bus /dev/i2c-1 --addr 0x40 id --json --pretty
+bmr --bus /dev/i2c-1 --addr 0x40 fwdata --json --pretty
+
+# Snapshot debug
+bmr --bus /dev/i2c-1 --addr 0x40 snapshot --cycle 0 --decode --json --pretty
+
+# PG/Multi-Pin config
+bmr --bus /dev/i2c-1 --addr 0x40 mfr-multi-pin set --pg highz --pg-enable 1
+
+# On/Off policy + Operation
+bmr --bus /dev/i2c-1 --addr 0x40 onoff set --powerup controlled --source both --en-active high --off soft
+bmr --bus /dev/i2c-1 --addr 0x40 operation set --on --margin normal
+
+# Timing and sequencing
+bmr --bus /dev/i2c-1 --addr 0x40 timing set --profile sequenced --ton-delay 250 --ton-rise 100 --toff-fall 40
+
+# Voltage and margins
+bmr --bus /dev/i2c-1 --addr 0x40 vout set --set-all 1.00 --margin-pct 5
+bmr --bus /dev/i2c-1 --addr 0x40 operation set --margin high
+```
