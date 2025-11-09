@@ -28,7 +28,12 @@ bmr --bus /dev/i2c-1 --addr 0x40 onoff get
 bmr --bus /dev/i2c-1 --addr 0x40 timing help
 bmr --bus /dev/i2c-1 --addr 0x40 timing get
 bmr --bus /dev/i2c-1 --addr 0x40 timing set --profile sequenced
-bmr --bus /dev/i2c-1 -a 0x40 timing set --ton-delay 250 --ton-rise 100 --toff-fall 20
+bmr --bus /dev/i2c-1 --addr 0x40 timing set --ton-delay 250 --ton-rise 100 --toff-fall 20
+bmr --bus /dev/i2c-1 --addr 0x40 operation get
+bmr --bus /dev/i2c-1 --addr 0x40 operation set --on --margin normal # turn the rail on, margin normal
+bmr --bus /dev/i2c-1 --addr 0x40 operation set --margin high # assuming the rail is on, turn the marin high
+bmr --bus /dev/i2c-1 --addr 0x40 operation set --off # turn off, based on onoff config settings
+bmr --bus /dev/i2c-1 --addr 0x40 operation set --raw 0xC0 # same, using raw: on + margin high
 ```
 
 **Notes:**
