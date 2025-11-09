@@ -13,6 +13,7 @@ sources = [
   'timing_cmd.c',
   'read_cmd.c',
   'status_cmd.c',
+  'onoff_cmd.c',
   'util_json.c',
 ]
 

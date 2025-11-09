@@ -24,6 +24,7 @@ bmr --bus /dev/i2c-1 --addr 0x40 restart
 bmr --bus /dev/i2c-1 --addr 0x40 id
 bmr --bus /dev/i2c-1 --addr 0x40 user-data get
 bmr --bus /dev/i2c-1 --addr 0x40 user-data set --ascii "Hello" --store
+bmr --bus /dev/i2c-1 --addr 0x40 onoff get
 bmr --bus /dev/i2c-1 --addr 0x40 timing help
 bmr --bus /dev/i2c-1 --addr 0x40 timing get
 bmr --bus /dev/i2c-1 --addr 0x40 timing set --profile sequenced

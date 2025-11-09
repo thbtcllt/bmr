@@ -7,6 +7,7 @@
 #include "mfr_id.h"
 #include "timing_cmd.h"
 #include "read_cmd.h"
+#include "onoff_cmd.h"
 #include "status_cmd.h"
 #include "mfr_fwdata.h"
 #include "mfr_restart.h"
@@ -43,6 +44,8 @@ usage(const char *p) {
 "                 [--fault-byte 0xHH]\n"
 "                 [--fault-response disable-retry|disable-until-cleared|ignore]\n"
 "                 [--retries 0..7] [--delay-units 0..7]\n"
+"  onoff get|set [--powerup always|controlled] [--source none|operation|pin|both]\n"
+"                [--en-active high|low] [--off soft|immediate] [--raw 0xHH]\n"
 "\n"
 "Default:\n"
 "  i2c DEV=%s addr=0x%02x\n"
@@ -139,6 +142,11 @@ main(int argc, char *const *argv) {
 
   if (!strcmp(cmd, "timing")) {
     rc = cmd_timing(fd, argc - optind, &argv[optind], opt_pretty);
+    goto fini;
+  }
+
+  if (!strcmp(cmd, "onoff")) {
+    rc = cmd_onoff(fd, argc - optind, &argv[optind], opt_pretty);
     goto fini;
   }
 
